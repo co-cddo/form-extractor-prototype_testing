@@ -129,7 +129,7 @@ app.post('/sendToClaude', async (req, res) => {
 
 // THE WEB PAGES
 
-const port = process.env.PORT || 80;
+const port = process.env.PORT || 3000;
 
 /* Render query page */
 app.get('/', (req, res) => {
