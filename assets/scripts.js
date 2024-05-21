@@ -7,7 +7,7 @@ document.getElementById('submit-url').addEventListener('submit', function(e) {
   document.getElementById('formImage').src = imageURL;
 
 
-  fetch('/sendToClaude', { // Adjust the URL as needed
+  fetch('/sendToOpenAI', { // Adjust the URL as needed
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',
