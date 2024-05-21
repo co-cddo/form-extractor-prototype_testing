@@ -7,6 +7,11 @@ import express from 'express';
 import nunjucks from 'nunjucks';
 import Anthropic from '@anthropic-ai/sdk';
 import fetch from 'node-fetch';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env['OPENAI_API_KEY'], // This is the default and can be omitted
+});
 
 var app = express();
 
@@ -22,9 +27,6 @@ const __filename = fileURLToPath(import.meta.url); // get the resolved path to t
 const __dirname = path.dirname(__filename); // get the name of the directory
 
 import extractFormQuestions from './data/extract-form-questions.json' assert { type: 'json' };
-
-// get API Key from environment variable ANTHROPIC_API_KEY
-const anthropic = new Anthropic();
 
 app.use('/assets', express.static(path.join(__dirname, '/node_modules/govuk-frontend/govuk/assets')))
 
@@ -44,15 +46,15 @@ app.use(express.json());
 app.use(express.static('public'));
 
 
-// CALL CLAUDE
+// CALL OPENAI
 
-app.post('/sendToClaude', async (req, res) => {
+app.post('/sendToOpenAI', async (req, res) => {
 
-  // Encode the image data into base64  
   const image_url = req.body.imageURL;
-  const image_media_type = "image/jpeg"
-  const image_array_buffer = await ((await fetch(image_url)).arrayBuffer());
-  const image_data = Buffer.from(image_array_buffer).toString('base64');
+  console.log(image_url);
+  const image_media_type = "image/jpeg";
+  const image_array_buffer = await ((await fetch(image_url)));
+  const image_data = image_array_buffer ;
 
   // Create a HTML wrapper for the JSON result to go in
   const jsonWrapper = (content) => `
@@ -72,45 +74,52 @@ app.post('/sendToClaude', async (req, res) => {
     {% set resultJSON = ${content} %}
   `;
 
-  // Call Claude!
+  const prompt = [
+    "Is this a form?",
+    "It's only a form if it contains form field boxes.",
+    "Hand drawn forms, questionnaires and surveys are all valid forms.",
+    "If it is a form, extract the questions from it using the extract_form_questions tool.",
+    "If there is no output, explain why."
+  ].join(' ');
 
   try {
 
-    const message = await anthropic.beta.tools.messages.create({
-      model: 'claude-3-opus-20240229', // The 2 smaller models generate API errors
-      temperature: 0.0, // Low temp keeps the results more consistent
-      max_tokens: 2048,
-      tools: [ extractFormQuestions ],
-      messages: [{
-        "role": "user",
-        "content": [
+    const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          temperature: 0.0,
+          max_tokens: 2048,
+          messages: [
             {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": image_media_type,
-                    "data": image_data,
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {"url": image_url}
+                   
                 },
+                {
+                  type: 'text',
+                  text: prompt,
+                },
+              ],
             },
-            {
-                "type": "text",
-                "text": "Is this a form? It's only a form if it contains form field boxes. If it is a form, extract the questions from it using the extract_form_questions tool."
-            }
-        ],
-      }]
-    });
-  
-    console.log(message);
+          ],
+          tools: [extractFormQuestions]
+        });
+    
+        //console.log(completion);
+        //console.log(completion.choices[0].message);
+    //console.log(completion.choices[0].message.tool_calls[0].function);
+    let result = JSON.parse(completion.choices[0].message.tool_calls[0].function.arguments);
+    console.log(result)
+    //let result = completion.choices[0].message.tool_calls[0].function;
+    
+    result.imageURL = image_url;
 
-    let result = message.content[1].input;
-
-    result.imageURL = image_url
+    //console.log(result)
 
     // Write the results into a 'results' folder
-
     const now = `${Date.now()}`;
-
-    // Write the files
     try {
       fs.writeFileSync('app/data/' + now + '.json', JSON.stringify(result, null, 2));
     } catch (err) {
@@ -118,18 +127,16 @@ app.post('/sendToClaude', async (req, res) => {
     }
 
     res.redirect('/results/' + now);
-
-  } catch(error) {
-    console.error('Error in Claude API call:', error);
-      return res.status(500).send('Error processing the request');
+  } catch (error) {
+    console.error('Error in OpenAI API call:', error);
+    return res.status(500).send('Error processing the request');
   }
-
 });
 
 
 // THE WEB PAGES
 
-const port = process.env.PORT || 3000;
+const port = 3000;
 
 /* Render query page */
 app.get('/', (req, res) => {
@@ -158,7 +165,17 @@ app.get('/forms/:formId/:question', (req, res) => {
   const formData = loadFormData(formId)
   res.locals.formData = formData
   res.locals.question = question
+  res.locals.formId = formId
   res.render('form.njk');
+})
+
+/* Render check-answers pages */
+app.get('/check-answers/:formId', (req, res) => {
+  const formId = req.params.formId 
+  const formData = loadFormData(formId)
+  res.locals.formData = formData
+  res.locals.formId = formId
+  res.render('check-answers.njk')
 })
 
 /* Render list pages */
@@ -187,5 +204,5 @@ app.get('/results/:formId', (req, res) => {
 })
 
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+	console.log('Server running at http://localhost:3000');
 })

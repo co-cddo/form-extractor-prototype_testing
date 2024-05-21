@@ -20,7 +20,8 @@
     "govuk-frontend": "^4.8.0",
     "jsdom": "^24.0.0",
     "node-fetch": "^3.3.2",
-    "nunjucks": "^3.2.4"
+    "nunjucks": "^3.2.4",
+    "openai":"4.47.1"
   },
   "exports": "./server.js",
   "type": "module",
